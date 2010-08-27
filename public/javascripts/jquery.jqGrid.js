@@ -1,11 +1,11 @@
 ;(function ($) {
 /*
- * jqGrid  3.6.3 - jQuery Grid
+ * jqGrid  3.6.4 - jQuery Grid
  * Copyright (c) 2008, Tony Tomov, tony@trirand.com
  * Dual licensed under the MIT and GPL licenses
  * http://www.opensource.org/licenses/mit-license.php
  * http://www.gnu.org/licenses/gpl.html
- * Date: 2010-02-07
+ * Date: 2010-02-14
  */
 $.jgrid = $.jgrid || {};
 $.extend($.jgrid,{
@@ -452,6 +452,7 @@ $.fn.jqGrid = function( pin ) {
 		},
 		getAccessor = function(obj, expr) {
 			var ret,p,prm;
+			if( typeof expr === 'function') return expr(obj);
 			ret = obj[expr];
 			if(ret===undefined) {
 			    if ( typeof expr === 'string' ) {
@@ -886,10 +887,11 @@ $.fn.jqGrid = function( pin ) {
 		},
 		sortArrayData = function() {
 			var stripNum = /[\$,%]/g;
-			var rows=[], col=0, st, sv, findSortKey,newDir = (ts.p.sortorder == "asc") ? 1 :-1;
+			var rows=[], col=0, st, sv, findSortKey,newDir = (ts.p.sortorder == "asc") ? 1 :-1, reverse=false;
 			$.each(ts.p.colModel,function(i,v){
 				if(this.index == ts.p.sortname || this.name == ts.p.sortname){
-					col = ts.p.lastsort= i;
+					if(ts.p.lastsort == i) reverse = true;
+					col = i;
 					st = this.sorttype;
 					return false;
 				}
@@ -922,11 +924,14 @@ $.fn.jqGrid = function( pin ) {
 			if(ts.p.treeGrid) {
 				$(ts).jqGrid("SortTree",newDir);
 			} else {
-				rows.sort(function(a, b) {
-					if (a.sortKey < b.sortKey) {return -newDir;}
-					if (a.sortKey > b.sortKey) {return newDir;}
-					return 0;
-				});
+				if(reverse)
+					rows.reverse();
+				else 
+					rows.sort(function(a, b) {
+						if (a.sortKey < b.sortKey) {return -newDir;}
+						if (a.sortKey > b.sortKey) {return newDir;}
+						return 0;
+					});
 				if(rows[0]){
 					$("td",rows[0]).each( function( k ) {
 						$(this).css("width",grid.headers[k].width+"px");
@@ -1106,11 +1111,10 @@ $.fn.jqGrid = function( pin ) {
 					$("tr th:eq("+idxcol+") span.s-ico",thd).show();
 				}
 			}
-			ts.p.lastsort = idxcol;
 			index = index.substring(5);
 			ts.p.sortname = ts.p.colModel[idxcol].index || index;
 			so = ts.p.sortorder;
-			if($.isFunction(ts.p.onSortCol)) {if (ts.p.onSortCol.call(ts,index,idxcol,so)=='stop') {return;}}
+			if($.isFunction(ts.p.onSortCol)) {if (ts.p.onSortCol.call(ts,index,idxcol,so)=='stop') {ts.p.lastsort = idxcol; return;}}
 			if(ts.p.datatype == "local") {
 				if(ts.p.deselectAfterSort) {$(ts).jqGrid("resetSelection");}
 			} else {
@@ -1126,6 +1130,7 @@ $.fn.jqGrid = function( pin ) {
 				});
 			}
 			populate();
+			ts.p.lastsort = idxcol;
 			if(ts.p.sortname != index && idxcol) {ts.p.lastsort = idxcol;}
 		},
 		setColWidth = function () {
@@ -2099,6 +2104,7 @@ $.jgrid.extend({
 					var tn = this.name;
 					if(this.hidden === false && !this.fixed){
 						cw = Math.floor((aw)/($t.p.tblwidth-tw)*this.width);
+						if (cw < 0) return;
 						this.width =cw;
 						initwidth += cw;
 						$t.grid.headers[i].width=cw;
@@ -4231,8 +4237,10 @@ $.jgrid.extend({
 			afterShowSearch : null,
 			onInitializeSearch: null,
 			closeAfterSearch : false,
+			closeAfterReset: false,
 			closeOnEscape : false,
 			multipleSearch : false,
+			cloneSearchRowOnAdd: true,
 			// translation
 			// if you want to change or remove the order change it in sopt
 			// ['bw','eq','ne','lt','le','gt','ge','ew','cn']
@@ -4317,7 +4325,7 @@ $.jgrid.extend({
 					});
 					if(fields.length>0){
 						$("<div id='"+fid+"' role='dialog' tabindex='-1'></div>").insertBefore("#gview_"+$t.p.id);
-						$("#"+fid).searchFilter(fields, { groupOps: p.groupOps, operators: oprtr, onClose:hideFilter, resetText: p.Reset, searchText: p.Find, windowTitle: p.caption,  rulesText:p.rulesText, matchText:p.matchText, onSearch: searchFilters, onReset: resetFilters,stringResult:p.multipleSearch, ajaxSelectOptions: $.extend({},$.jgrid.ajaxOptions,$t.p.ajaxSelectOptions ||{}) });
+						$("#"+fid).searchFilter(fields, { groupOps: p.groupOps, operators: oprtr, onClose:hideFilter, resetText: p.Reset, searchText: p.Find, windowTitle: p.caption,  rulesText:p.rulesText, matchText:p.matchText, onSearch: searchFilters, onReset: resetFilters,stringResult:p.multipleSearch, ajaxSelectOptions: $.extend({},$.jgrid.ajaxOptions,$t.p.ajaxSelectOptions ||{}), clone: p.cloneSearchRowOnAdd });
 						$(".ui-widget-overlay","#"+fid).remove();
 						if($t.p.direction=="rtl") $(".ui-closer","#"+fid).css("float","left");
 						if (p.drag===true) {
@@ -4374,6 +4382,7 @@ $.jgrid.extend({
 				}
 				$.extend(grid[0].p.postData,sdata);
 				grid.trigger("reloadGrid",[{page:1}]);
+				if(p.closeAfterReset) hideFilter($("#"+fid));
 			}
 			function hideFilter(selector) {
 				if(p.onClose){
@@ -4515,7 +4524,7 @@ $.jgrid.extend({
 					maxRows = Math.max(maxRows, fmto ? fmto.rowpos || 0 : 0 );
 				});
 				var dh = isNaN(p.dataheight) ? p.dataheight : p.dataheight+"px";
-				var flr, frm = $("<form name='FormPost' id='"+frmgr+"' class='FormGrid' style='width:100%;overflow:auto;position:relative;height:"+dh+";'></form>").data("disabled",false),
+				var flr, frm = $("<form name='FormPost' id='"+frmgr+"' class='FormGrid' onSubmit='return false;' style='width:100%;overflow:auto;position:relative;height:"+dh+";'></form>").data("disabled",false),
 				tbl =$("<table id='"+frmtb+"' class='EditTable' cellspacing='0' cellpading='0' border='0'><tbody></tbody></table>");
 				$(frm).append(tbl);
 				flr = $("<tr id='FormError' style='display:none'><td class='ui-state-error' colspan='"+(maxCols*2)+"'></td></tr>");
@@ -5757,7 +5766,7 @@ $.jgrid.extend({
 						try {
 							var gID = $t.p.id;
 							$("#fbox_"+gID).searchFilter().reset();
-	                        $t.clearToolbar(false);
+	                        if($.isFunction($t.clearToolbar)) $t.clearToolbar(false);
 						} catch (e) {}
 						switch (o.refreshstate) {
 							case 'firstpage':
@@ -6033,10 +6042,11 @@ $.jgrid.extend({
                     gprm.colNames.splice(0,1);
                     gprm.colModel.splice(0,1);
                 }
-                if(gprm.subgrid) {
+                if(gprm.subGrid) {
                     gprm.colNames.splice(0,1);
                     gprm.colModel.splice(0,1);
                 }
+                gprm.knv = null;
                 if(gprm.treeGrid) {
                     for (var key in gprm.treeReader) {
                         gprm.colNames.splice(gprm.colNames.length-1);
@@ -6547,7 +6557,7 @@ $.jgrid.extend({
 		function insert(perm,i,v) {
 			if(i>=0){
 				var a = perm.slice();
-				var b = a.splice(i);
+				var b = a.splice(i,Math.max(perm.length-i,i));
 				if(i>perm.length) i = perm.length;
 				a[i] = v;
 				return a.concat(b);
